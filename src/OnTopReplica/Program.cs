@@ -6,6 +6,7 @@ using System.Windows.Forms;
 using OnTopReplica.Properties;
 using OnTopReplica.StartupOptions;
 using OnTopReplica.Update;
+using static System.Windows.Forms.DataFormats;
 
 namespace OnTopReplica {
     
@@ -63,15 +64,37 @@ namespace OnTopReplica {
             
             //Load language
             Thread.CurrentThread.CurrentUICulture = Settings.Default.Language;
-
+            Application.EnableVisualStyles();
+            Application.SetCompatibleTextRenderingDefault(false);
+           
             //Show form
             using (_mainForm = new MainForm(options)) {
                 Application.Idle += _handlerIdleUpdater;
 
                 Log.Write("Entering application loop");
 
+                // 获取所有屏幕
+                Screen[] screens = Screen.AllScreens;
+
+                if(screens.Length > 1) {
+                    // 如果存在副屏，将窗体启动在第二个屏幕
+                    for(var i = 0; i < screens.Length; i++) {
+                        if(!screens[i].Primary) {
+                            Screen secondaryScreen = screens[i];
+                            _mainForm.StartPosition = FormStartPosition.Manual;
+                            _mainForm.Location = secondaryScreen.WorkingArea.Location;
+                            break;
+                        }
+                    }                    
+                    Application.Run(_mainForm);
+                }
+                else {
+                    // 如果只有一个屏幕，正常启动
+                    Application.Run(_mainForm);
+                }
+
+
                 //Enter GUI loop
-                Application.Run(_mainForm);
 
                 //Re-enable chrome to store correct position (position is stored always WITH chrome: when restoring fails, the position stays ok)
                 Settings.Default.RestoreLastShowChrome = _mainForm.IsChromeVisible;
