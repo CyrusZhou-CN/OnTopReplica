@@ -408,6 +408,7 @@
     <EmbeddedResource Include="Strings.no.resx">
       <Generator>ResXFileCodeGenerator</Generator>
       <LastGenOutput>Strings.no.Designer.cs</LastGenOutput>
+      <SubType>Designer</SubType>
     </EmbeddedResource>
     <EmbeddedResource Include="Strings.pt-BR.resx">
       <Generator>ResXFileCodeGenerator</Generator>

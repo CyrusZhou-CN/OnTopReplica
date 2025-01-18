@@ -52,6 +52,17 @@ namespace OnTopReplica {
                 Settings.Default.MustUpdate = false;
             }
 
+#if DEBUG // 方便测试
+            args = new string[]
+            {
+        "--windowClass=OpusApp",
+        "--screenPosition=C",
+        "--chromeOff",
+        "--fs",
+        "-r=361,2,655,380"
+            };
+#endif
+
             //Load startup options
             var options = StartupOptions.Factory.CreateOptions(args);
             string optionsMessage = options.DebugMessage;

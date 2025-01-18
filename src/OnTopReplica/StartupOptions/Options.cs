@@ -5,6 +5,7 @@ using System.Text;
 using System.Drawing;
 using System.IO;
 using OnTopReplica.WindowSeekers;
+using System.Windows.Forms;
 
 namespace OnTopReplica.StartupOptions {
 
@@ -75,7 +76,7 @@ namespace OnTopReplica.StartupOptions {
         /// </summary>
         public TextWriter DebugMessageWriter {
             get {
-                if (_sbWriter == null) {
+                if(_sbWriter == null) {
                     _sbWriter = new StringWriter(_sb);
                 }
                 return _sbWriter;
@@ -96,18 +97,14 @@ namespace OnTopReplica.StartupOptions {
         #endregion
 
         #region Application
-
-        public void Apply(MainForm form) {
-            Log.Write("Applying command line launch parameters");
-
-            form.Opacity = (double)Opacity / 255.0;
-
-            //Seek handle for thumbnail cloning
-            WindowHandle handle = null;
-            if (WindowId.HasValue) {
+        public WindowHandle handle = null;
+        public bool IsApply = false;
+        public WindowHandle GetHandle(MainForm form) {
+            IsApply = false;
+            if(WindowId.HasValue) {
                 handle = WindowHandle.FromHandle(WindowId.Value);
             }
-            else if (WindowTitle != null) {
+            else if(WindowTitle != null) {
                 var seeker = new ByTitleWindowSeeker(WindowTitle) {
                     OwnerHandle = form.Handle,
                     SkipNotVisibleWindows = MustBeVisible
@@ -116,7 +113,7 @@ namespace OnTopReplica.StartupOptions {
 
                 handle = seeker.Windows.FirstOrDefault();
             }
-            else if (WindowClass != null) {
+            else if(WindowClass != null) {
                 var seeker = new ByClassWindowSeeker(WindowClass) {
                     OwnerHandle = form.Handle,
                     SkipNotVisibleWindows = MustBeVisible
@@ -125,19 +122,32 @@ namespace OnTopReplica.StartupOptions {
 
                 handle = seeker.Windows.FirstOrDefault();
             }
+            if(handle!=null) {
+                IsApply = true;
+            }
+            return handle;
+        }
+        public void Apply(MainForm form) {
+            Log.Write("Applying command line launch parameters");
 
-            if (StartPositionLock.HasValue) {
+            form.Opacity = (double)Opacity / 255.0;
+
+            //Seek handle for thumbnail cloning
+
+            handle = GetHandle(form);
+
+            if(StartPositionLock.HasValue) {
                 form.PositionLock = StartPositionLock.Value;
             }
 
             //Clone any found handle (this applies thumbnail and aspect ratio)
-            if (handle != null) {
+            if(handle != null) {
                 form.SetThumbnail(handle, Region);
             }
 
             //Adaptive size handling
-            if (!StartSize.HasValue && (StartWidth.HasValue || StartHeight.HasValue)) {
-                if (StartWidth.HasValue) {
+            if(!StartSize.HasValue && (StartWidth.HasValue || StartHeight.HasValue)) {
+                if(StartWidth.HasValue) {
                     StartSize = new Size(StartWidth.Value, form.ComputeHeightFromWidth(StartWidth.Value));
                 }
                 else {
@@ -146,32 +156,32 @@ namespace OnTopReplica.StartupOptions {
             }
 
             //Size and location start values
-            if (StartLocation.HasValue && StartSize.HasValue) {
+            if(StartLocation.HasValue && StartSize.HasValue) {
                 form.StartPosition = System.Windows.Forms.FormStartPosition.Manual;
                 form.Location = StartLocation.Value;
                 form.ClientSize = StartSize.Value;
             }
-            else if (StartLocation.HasValue) {
+            else if(StartLocation.HasValue) {
                 form.StartPosition = System.Windows.Forms.FormStartPosition.WindowsDefaultBounds;
                 form.Location = StartLocation.Value;
             }
-            else if (StartSize.HasValue) {
+            else if(StartSize.HasValue) {
                 form.StartPosition = System.Windows.Forms.FormStartPosition.WindowsDefaultLocation;
                 form.ClientSize = StartSize.Value;
             }
 
             //Other features
-            if (EnableClickForwarding) {
+            if(EnableClickForwarding) {
                 form.ClickForwardingEnabled = true;
             }
-            if (EnableClickThrough) {
+            if(EnableClickThrough) {
                 form.ClickThroughEnabled = true;
             }
 
             form.IsChromeVisible = !DisableChrome;
 
             //Fullscreen
-            if (Fullscreen) {
+            if(Fullscreen) {
                 form.FullscreenManager.SwitchFullscreen();
             }
         }

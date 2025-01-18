@@ -2,6 +2,8 @@
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Drawing;
+using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 using OnTopReplica.Native;
 using OnTopReplica.Properties;
@@ -30,7 +32,7 @@ namespace OnTopReplica {
 
             FullscreenManager = new FullscreenFormManager(this);
             _quickRegionDrawingHandler = new ThumbnailPanel.RegionDrawnHandler(HandleQuickRegionDrawn);
-            
+
             //WinForms init pass
             InitializeComponent();
 
@@ -59,8 +61,8 @@ namespace OnTopReplica {
 
         #region Event override
 
-        protected override void OnHandleCreated(EventArgs e){
- 	        base.OnHandleCreated(e);
+        protected override void OnHandleCreated(EventArgs e) {
+            base.OnHandleCreated(e);
 
             //Window init
             KeepAspectRatio = false;
@@ -80,11 +82,57 @@ namespace OnTopReplica {
         protected override void OnShown(EventArgs e) {
             Log.Write("Main form shown");
             base.OnShown(e);
-
-            //Apply startup options
             _startupOptions.Apply(this);
+            MonitorTargetWindow();
         }
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder lpString, int nMaxCount);
 
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern int GetWindowTextLength(IntPtr hWnd);
+        private static string getWindowTitle(IntPtr hWnd) {
+            // 获取窗口标题的长度
+            int length = GetWindowTextLength(hWnd);
+            if(length == 0) {
+                return string.Empty; // 窗口无标题或句柄无效
+            }
+
+            // 创建缓冲区并获取标题
+            var buffer = new System.Text.StringBuilder(length + 1);
+            GetWindowText(hWnd, buffer, buffer.Capacity);
+
+            return buffer.ToString();
+        }
+        string windowsText = "";
+        /// <summary>
+        /// 监视目标窗口，实现目标窗口退出重启后自动运行
+        /// </summary>
+        private async void MonitorTargetWindow() {
+            bool isApplied = false;
+
+            while(true) {
+
+                var handle = _startupOptions.GetHandle(this);
+
+                if(handle == null || _startupOptions.handle != handle) {
+                    if(isApplied) {
+                        UnsetThumbnail();
+                        isApplied = false;
+                    }
+                }
+                else {
+                    SetThumbnail(handle, _startupOptions.Region);
+                    var text = getWindowTitle(handle.Handle);
+                    
+                    if(!isApplied|| text != windowsText) {
+                        _startupOptions.Apply(this);
+                        isApplied = true;
+                    }
+                }
+                // 等待100毫秒后再次检查
+                await Task.Delay(2000);
+            }
+        }
         protected override void OnClosing(CancelEventArgs e) {
             Log.Write("Main form closing");
             base.OnClosing(e);
@@ -112,7 +160,7 @@ namespace OnTopReplica {
 
         protected override void OnResizing(EventArgs e) {
             //Update aspect ratio from thumbnail while resizing (but do not refresh, resizing does that anyway)
-            if (_thumbnailPanel.IsShowingThumbnail) {
+            if(_thumbnailPanel.IsShowingThumbnail) {
                 SetAspectRatio(_thumbnailPanel.ThumbnailPixelSize, false);
             }
         }
@@ -121,7 +169,7 @@ namespace OnTopReplica {
             base.OnActivated(e);
 
             //Deactivate click-through if form is reactivated
-            if (ClickThroughEnabled) {
+            if(ClickThroughEnabled) {
                 ClickThroughEnabled = false;
             }
 
@@ -133,7 +181,7 @@ namespace OnTopReplica {
 
             //HACK: sometimes, even if TopMost is true, the window loses its "always on top" status.
             //  This is a fix attempt that probably won't work...
-            if (!FullscreenManager.IsFullscreen) { //fullscreen mode doesn't use TopMost
+            if(!FullscreenManager.IsFullscreen) { //fullscreen mode doesn't use TopMost
                 TopMost = false;
                 TopMost = true;
             }
@@ -142,8 +190,8 @@ namespace OnTopReplica {
         protected override void OnMouseWheel(MouseEventArgs e) {
             base.OnMouseWheel(e);
 
-            if (!FullscreenManager.IsFullscreen) {
-                if (_thumbnailPanel.IsShowingThumbnail) {
+            if(!FullscreenManager.IsFullscreen) {
+                if(_thumbnailPanel.IsShowingThumbnail) {
                     SetAspectRatio(_thumbnailPanel.ThumbnailPixelSize, false);
                 }
 
@@ -167,7 +215,7 @@ namespace OnTopReplica {
             base.OnMouseClick(e);
 
             //Same story as above (OnMouseDoubleClick)
-            if (e.Button == System.Windows.Forms.MouseButtons.Right) {
+            if(e.Button == System.Windows.Forms.MouseButtons.Right) {
                 OpenContextMenu(null);
             }
         }
@@ -175,16 +223,16 @@ namespace OnTopReplica {
         private ThumbnailPanel.RegionDrawnHandler _quickRegionDrawingHandler;
 
         protected override void WndProc(ref Message m) {
-            if (_msgPumpManager != null) {
-                if (_msgPumpManager.PumpMessage(ref m)) {
+            if(_msgPumpManager != null) {
+                if(_msgPumpManager.PumpMessage(ref m)) {
                     return;
                 }
             }
 
-            switch (m.Msg) {
+            switch(m.Msg) {
                 case WM.NCRBUTTONUP:
                     //Open context menu if right button clicked on caption (i.e. all of the window area because of glass)
-                    if (m.WParam.ToInt32() == HT.CAPTION) {
+                    if(m.WParam.ToInt32() == HT.CAPTION) {
                         OpenContextMenu(null);
 
                         m.Result = IntPtr.Zero;
@@ -193,7 +241,7 @@ namespace OnTopReplica {
                     break;
 
                 case WM.NCLBUTTONDOWN:
-                    if ((ModifierKeys & Keys.Control) == Keys.Control &&
+                    if((ModifierKeys & Keys.Control) == Keys.Control &&
                         ThumbnailPanel.IsShowingThumbnail &&
                         !ThumbnailPanel.DrawMouseRegions) {
 
@@ -207,7 +255,7 @@ namespace OnTopReplica {
 
                 case WM.NCLBUTTONDBLCLK:
                     //Toggle fullscreen mode if double click on caption (whole glass area)
-                    if (m.WParam.ToInt32() == HT.CAPTION) {
+                    if(m.WParam.ToInt32() == HT.CAPTION) {
                         FullscreenManager.Toggle();
 
                         m.Result = IntPtr.Zero;
@@ -217,7 +265,7 @@ namespace OnTopReplica {
 
                 case WM.NCHITTEST:
                     //Make transparent to hit-testing if in click through mode
-                    if (ClickThroughEnabled) {
+                    if(ClickThroughEnabled) {
                         m.Result = (IntPtr)HT.TRANSPARENT;
 
                         RefreshClickThroughComeBack();
@@ -245,48 +293,48 @@ namespace OnTopReplica {
             base.OnKeyUp(e);
 
             //ALT
-            if (e.Modifiers == Keys.Alt) {
-                if (e.KeyCode == Keys.Enter) {
+            if(e.Modifiers == Keys.Alt) {
+                if(e.KeyCode == Keys.Enter) {
                     e.Handled = true;
                     FullscreenManager.Toggle();
                 }
 
-                else if (e.KeyCode == Keys.D1 || e.KeyCode == Keys.NumPad1) {
+                else if(e.KeyCode == Keys.D1 || e.KeyCode == Keys.NumPad1) {
                     FitToThumbnail(0.25);
                 }
 
-                else if (e.KeyCode == Keys.D2 || e.KeyCode == Keys.NumPad2) {
+                else if(e.KeyCode == Keys.D2 || e.KeyCode == Keys.NumPad2) {
                     FitToThumbnail(0.5);
                 }
 
-                else if (e.KeyCode == Keys.D3 || e.KeyCode == Keys.NumPad3 ||
+                else if(e.KeyCode == Keys.D3 || e.KeyCode == Keys.NumPad3 ||
                          e.KeyCode == Keys.D0 || e.KeyCode == Keys.NumPad0) {
                     FitToThumbnail(1.0);
                 }
 
-                else if (e.KeyCode == Keys.D4 || e.KeyCode == Keys.NumPad4) {
+                else if(e.KeyCode == Keys.D4 || e.KeyCode == Keys.NumPad4) {
                     FitToThumbnail(2.0);
                 }
             }
 
             //F11 Fullscreen switch
-            else if (e.KeyCode == Keys.F11) {
+            else if(e.KeyCode == Keys.F11) {
                 e.Handled = true;
                 FullscreenManager.Toggle();
             }
 
             //ESCAPE
-            else if (e.KeyCode == Keys.Escape) {
+            else if(e.KeyCode == Keys.Escape) {
                 //Disable click-through
-                if (ClickThroughEnabled) {
+                if(ClickThroughEnabled) {
                     ClickThroughEnabled = false;
                 }
                 //Toggle fullscreen
-                else if (FullscreenManager.IsFullscreen) {
+                else if(FullscreenManager.IsFullscreen) {
                     FullscreenManager.SwitchBack();
                 }
                 //Disable click forwarding
-                else if (ClickForwardingEnabled) {
+                else if(ClickForwardingEnabled) {
                     ClickForwardingEnabled = false;
                 }
             }
@@ -311,10 +359,12 @@ namespace OnTopReplica {
                 //Set aspect ratio (this will resize the form), do not refresh if in fullscreen
                 SetAspectRatio(_thumbnailPanel.ThumbnailPixelSize, !FullscreenManager.IsFullscreen);
             }
-            catch (Exception ex) {
+            catch(Exception ex) {
                 Log.WriteException("Unable to set new thumbnail", ex);
 
-                ThumbnailError(ex, false, Strings.ErrorUnableToCreateThumbnail);
+                if(!_startupOptions.IsApply) {
+                    ThumbnailError(ex, false, Strings.ErrorUnableToCreateThumbnail); 
+                }
                 _thumbnailPanel.UnsetThumbnail();
             }
         }
@@ -324,14 +374,14 @@ namespace OnTopReplica {
         /// </summary>
         /// <param name="handles">List of window handles.</param>
         public void SetThumbnailGroup(IList<WindowHandle> handles) {
-            if (handles.Count == 0)
+            if(handles.Count == 0)
                 return;
 
             //At last one thumbnail
             SetThumbnail(handles[0], null);
 
             //Handle if no real group
-            if (handles.Count == 1)
+            if(handles.Count == 1)
                 return;
 
             CurrentThumbnailWindowHandle = null;
@@ -355,13 +405,13 @@ namespace OnTopReplica {
         /// </summary>
         public ThumbnailRegion SelectedThumbnailRegion {
             get {
-                if (!_thumbnailPanel.IsShowingThumbnail || !_thumbnailPanel.ConstrainToRegion)
+                if(!_thumbnailPanel.IsShowingThumbnail || !_thumbnailPanel.ConstrainToRegion)
                     return null;
 
                 return _thumbnailPanel.SelectedRegion;
             }
             set {
-                if (!_thumbnailPanel.IsShowingThumbnail)
+                if(!_thumbnailPanel.IsShowingThumbnail)
                     return;
 
                 _thumbnailPanel.SelectedRegion = value;
@@ -380,22 +430,22 @@ namespace OnTopReplica {
         private void FixPositionAndSize() {
             var screen = Screen.FromControl(this);
 
-            if (Width > screen.WorkingArea.Width) {
+            if(Width > screen.WorkingArea.Width) {
                 Width = screen.WorkingArea.Width - FixMargin;
             }
-            if (Height > screen.WorkingArea.Height) {
+            if(Height > screen.WorkingArea.Height) {
                 Height = screen.WorkingArea.Height - FixMargin;
             }
-            if (Location.X + Width > screen.WorkingArea.Right) {
+            if(Location.X + Width > screen.WorkingArea.Right) {
                 Location = new Point(screen.WorkingArea.Right - Width - FixMargin, Location.Y);
             }
-            if (Location.Y + Height > screen.WorkingArea.Bottom) {
+            if(Location.Y + Height > screen.WorkingArea.Bottom) {
                 Location = new Point(Location.X, screen.WorkingArea.Bottom - Height - FixMargin);
             }
         }
 
         private void ThumbnailError(Exception ex, bool suppress, string title) {
-            if (!suppress) {
+            if(!suppress) {
                 ShowErrorDialog(title, Strings.ErrorGenericThumbnailHandleError, ex.Message);
             }
 
@@ -411,7 +461,7 @@ namespace OnTopReplica {
                 ClientSize = fittedSize;
                 RefreshScreenLock();
             }
-            catch (Exception ex) {
+            catch(Exception ex) {
                 ThumbnailError(ex, false, Strings.ErrorUnableToFit);
             }
         }
@@ -456,6 +506,6 @@ namespace OnTopReplica {
         }
 
         #endregion
-        
+
     }
 }
